@@ -78,6 +78,16 @@ const createModel = async () => {
   return provider(model);
 };
 
+const getReasoningEffort = () => {
+  if (!env.AI_REASONING_EFFORT) {
+    throw new Error(
+      "Missing required AI reasoning effort environment variable"
+    );
+  }
+
+  return env.AI_REASONING_EFFORT;
+};
+
 export const createAgent = (
   sandboxId: string,
   threadId: string,
@@ -98,6 +108,11 @@ export const createAgent = (
   return new DurableAgent({
     maxRetries: 0,
     model: createModel,
+    providerOptions: {
+      openreview: {
+        reasoningEffort: getReasoningEffort(),
+      },
+    },
     system,
     tools: {
       bash: createBashTool(sandboxId),
