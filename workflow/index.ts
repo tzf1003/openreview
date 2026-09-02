@@ -1,6 +1,8 @@
 import { FatalError } from "workflow";
 
 import { parseError } from "@/lib/error";
+import { failReviewStatus } from "@/lib/review/status";
+import type { ReviewRun } from "@/lib/review/types";
 
 import { addPRComment } from "./steps/add-pr-comment";
 import { createSandbox } from "./steps/create-sandbox";
@@ -21,6 +23,7 @@ export interface WorkflowParams {
   prRevision: string;
   prNumber: number;
   repoFullName: string;
+  reviewRun?: ReviewRun;
   threadId: string;
 }
 
@@ -31,6 +34,7 @@ interface SandboxReviewOptions {
   prRevision: string;
   prNumber: number;
   repoFullName: string;
+  reviewRun?: ReviewRun;
   sandboxId: string;
   threadId: string;
 }
@@ -49,6 +53,7 @@ const runSandboxReview = async (
     prNumber: options.prNumber,
     prRevision: options.prRevision,
     repoFullName: options.repoFullName,
+    reviewRun: options.reviewRun,
     sandboxId: options.sandboxId,
     threadId: options.threadId,
   });
@@ -57,22 +62,22 @@ const runSandboxReview = async (
   }
 };
 
-const reportWorkflowError = async (
+const reportInteractiveWorkflowError = async (
   threadId: string,
   error: unknown
 ): Promise<void> => {
   await addPRComment(
     threadId,
-    `## Error
+    `## Xsec Review · 处理失败
 
-An error occurred while processing your request:
+处理你的请求时发生错误：
 
 \`\`\`
 ${parseError(error)}
 \`\`\`
 
 ---
-*Powered by [OpenReview](https://github.com/vercel-labs/openreview)*`
+*由 Xsec Review 提供*`
   );
 };
 
@@ -86,6 +91,7 @@ export const botWorkflow = async (params: WorkflowParams): Promise<void> => {
     prRevision,
     prNumber,
     repoFullName,
+    reviewRun,
     threadId,
   } = params;
 
@@ -99,11 +105,14 @@ export const botWorkflow = async (params: WorkflowParams): Promise<void> => {
       prNumber,
       prRevision,
       repoFullName,
+      reviewRun,
       sandboxId,
       threadId,
     });
   } catch (error) {
-    await reportWorkflowError(threadId, error);
+    await (reviewRun
+      ? failReviewStatus(reviewRun, error)
+      : reportInteractiveWorkflowError(threadId, error));
     throw error;
   } finally {
     await stopSandbox(sandboxId);

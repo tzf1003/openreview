@@ -7,7 +7,6 @@
       "dependencies": {
         "@ai-sdk/openai-compatible": "2.0.74",
         "@chat-adapter/github": "^4.15.0",
-        "@chat-adapter/state-memory": "^4.15.0",
         "@chat-adapter/state-redis": "^4.15.0",
         "@streamdown/cjk": "^1.0.2",
         "@streamdown/code": "^1.1.0",
@@ -28,6 +27,7 @@
         "radix-ui": "^1.4.3",
         "react": "19.2.3",
         "react-dom": "19.2.3",
+        "redis": "^4.7.1",
         "server-only": "^0.0.1",
         "streamdown": "^2.4.0",
         "tailwind-merge": "^3.5.0",
@@ -161,8 +161,6 @@
     "@chat-adapter/github": ["@chat-adapter/github@4.15.0", "", { "dependencies": { "@chat-adapter/shared": "4.15.0", "@octokit/auth-app": "^7.1.1", "@octokit/rest": "^21.0.2", "chat": "4.15.0" } }, "sha512-qoQHwSRcxsh2LiYxGf2aO7y8H2BIYn85vZmT7LXbEHEumtA5lDWqs/PrHhFenTAsW7bEhkadkpDJYeB18nkr0Q=="],
 
     "@chat-adapter/shared": ["@chat-adapter/shared@4.15.0", "", { "dependencies": { "chat": "4.15.0" } }, "sha512-otIS9zf0wY3DMc5WGK1sOJiASSeMHcdEqmuxDWW/6tK7gdRE7FOVE+dfo/74ykj9QZwv+a9cByh1cimaeHbiAw=="],
-
-    "@chat-adapter/state-memory": ["@chat-adapter/state-memory@4.15.0", "", { "dependencies": { "chat": "4.15.0" } }, "sha512-I/p6dA8fl8peZH9utKOsO8raFttUSyIQwyhB/uP6cR9d07hZVcG/SF30t4RjKDgegnq8+euqPFj3lCssIaYhoA=="],
 
     "@chat-adapter/state-redis": ["@chat-adapter/state-redis@4.15.0", "", { "dependencies": { "chat": "4.15.0", "redis": "^4.7.0" } }, "sha512-156CGZCkMXzsnMC20nIpNkAGScbasOHxR9YcPMuLm2IwSC1L/Kyea7o9TEv2ldvk63q/e+AaU+98T7T5/2+mvg=="],
 
