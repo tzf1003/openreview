@@ -8,7 +8,8 @@ An open-source, self-hosted AI code review bot. Deploy to Vercel, connect a GitH
 
 ## Features
 
-- **On-demand reviews** — Mention `@openreview` in any PR comment to trigger a review. Powered by [Chat SDK](https://chat-sdk.dev)
+- **Automatic reviews** — Reviews PRs when they are opened, reopened, marked ready, or updated
+- **On-demand follow-ups** — Mention `@openreview` in any PR comment for additional instructions. Powered by [Chat SDK](https://chat-sdk.dev)
 - **Sandboxed execution** — Runs in an isolated [Vercel Sandbox](https://vercel.com/docs/sandbox) with full repo access, including the ability to run linters, formatters, and tests
 - **Inline suggestions** — Posts line-level comments with GitHub suggestion blocks for one-click fixes
 - **Code changes** — Can directly fix formatting, lint errors, and simple bugs, then commit and push to your PR branch
@@ -29,7 +30,7 @@ sequenceDiagram
     participant SB as Vercel Sandbox
     participant AI as Claude Agent
 
-    U->>GH: @openreview in PR comment
+    U->>GH: Open or update a pull request
     GH->>WH: Webhook event
     WH->>WF: Start workflow
 
@@ -57,7 +58,7 @@ sequenceDiagram
     WH->>WF: Start new workflow run
 ```
 
-1. Mention `@openreview` in a PR comment (optionally with specific instructions)
+1. Open, reopen, mark ready, or update a pull request
 2. OpenReview spins up a sandboxed environment and clones the repo on the PR branch
 3. A Claude-powered agent reviews the diff, explores the codebase, and runs project tooling
 4. The agent posts its findings as PR comments with inline suggestions
@@ -86,6 +87,7 @@ Create a new [GitHub App](https://github.com/settings/apps/new) with the followi
 **Subscribe to events**:
 
 - Issue comment
+- Pull request
 - Pull request review comment
 
 Generate a private key and webhook secret, then note your App ID and Installation ID.
@@ -105,11 +107,13 @@ Add the following environment variables to your Vercel project:
 
 ### 4. Install the GitHub App
 
-Install the GitHub App on the repositories you want OpenReview to monitor. Once installed, mention `@openreview` in any PR comment to trigger a review.
+Install the GitHub App on the repositories you want OpenReview to monitor. Ready pull requests are reviewed automatically, and mentions trigger additional reviews with specific instructions.
 
 ## Usage
 
-**Trigger a review**: Comment `@openreview` on any PR. You can include specific instructions:
+**Automatic review**: Open, reopen, mark ready, or push new commits to a pull request.
+
+**Request a follow-up review**: Comment `@openreview` on any PR. You can include specific instructions:
 
 ```
 @openreview check for security vulnerabilities

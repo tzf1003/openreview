@@ -2,6 +2,10 @@ import { Sandbox } from "@vercel/sandbox";
 
 import { parseError } from "@/lib/error";
 
+interface InstallDependenciesOptions {
+  installProjectDependencies?: boolean;
+}
+
 const detectInstallCommand = async (
   sandbox: Sandbox
 ): Promise<{ args: string[]; cmd: string }> => {
@@ -33,7 +37,10 @@ const detectInstallCommand = async (
   return { args: ["install"], cmd: "npm" };
 };
 
-export const installDependencies = async (sandboxId: string): Promise<void> => {
+export const installDependencies = async (
+  sandboxId: string,
+  options: InstallDependenciesOptions = {}
+): Promise<void> => {
   "use step";
 
   let sandbox: Sandbox | null = null;
@@ -65,6 +72,10 @@ export const installDependencies = async (sandboxId: string): Promise<void> => {
       throw new Error(
         `Failed to install GitHub CLI (exit ${ghInstall.exitCode}): ${stderr || stdout}`
       );
+    }
+
+    if (options.installProjectDependencies === false) {
+      return;
     }
 
     // Install project dependencies

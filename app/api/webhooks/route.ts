@@ -1,9 +1,14 @@
 import { after, NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { handlePullRequestWebhook } from "@/lib/auto-review";
 import { getBot } from "@/lib/bot";
 
-export const POST = async (request: NextRequest): Promise<NextResponse> => {
+export const POST = async (request: NextRequest): Promise<Response> => {
+  if (request.headers.get("x-github-event") === "pull_request") {
+    return handlePullRequestWebhook(request);
+  }
+
   const bot = await getBot();
   const handler = bot.webhooks.github;
 
@@ -16,5 +21,5 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
   return handler(request, {
     waitUntil: (task) => after(() => task),
-  }) as Promise<NextResponse>;
+  });
 };
