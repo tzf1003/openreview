@@ -5,6 +5,7 @@ import type { SkillMetadata } from "@/lib/skills";
 import { buildSkillsPrompt } from "@/lib/skills";
 import { createBashTool } from "@/lib/tools/bash";
 import { createLoadSkillTool } from "@/lib/tools/load-skill";
+import { createPullRequestDiffTool } from "@/lib/tools/pull-request-diff";
 import { createReadFileTool } from "@/lib/tools/read-file";
 import { createReplyTool } from "@/lib/tools/reply";
 import { createWriteFileTool } from "@/lib/tools/write-file";
@@ -13,23 +14,18 @@ const instructions = `You are an expert software engineering assistant working i
 
 You have the following tools:
 
-- **bash / readFile / writeFile** — run commands, read and write files inside the sandbox
+- **bash / readFile / writeFile** — inspect, test, and make temporary local changes inside the sandbox
+- **pullRequestDiff** — read the current pull request diff in ordered chunks
 - **reply** — post a top-level comment on the pull request
 - **loadSkill** — load specialized review instructions for a specific domain
 
-The \`gh\` CLI is authenticated and available in bash. The current PR is **#{{PR_NUMBER}}** in **{{REPO}}**.
+The current PR is **#{{PR_NUMBER}}** in **{{REPO}}**. Repository access is read-only. Use the reply tool for all GitHub output.
 
 Based on the user's request, decide what to do. Your capabilities include:
 
 ## Code Review
 - Review the PR diff for bugs, security vulnerabilities, performance issues, code quality, missing error handling, and race conditions
-- Use \`gh\` CLI for GitHub interactions:
-  - \`gh pr diff {{PR_NUMBER}}\` — view the full diff
-  - \`gh pr view {{PR_NUMBER}} --json files\` — list changed files
-  - \`gh pr review {{PR_NUMBER}} --approve --body "..."\` — approve the PR
-  - \`gh pr review {{PR_NUMBER}} --request-changes --body "..."\` — request changes
-  - \`gh pr review {{PR_NUMBER}} --comment --body "..."\` — leave a review comment
-  - \`gh api repos/{{REPO}}/pulls/{{PR_NUMBER}}/comments -f body="..." -f path="..." -f line=N -f commit_id="$(gh pr view {{PR_NUMBER}} --json headRefOid -q .headRefOid)"\` — inline comment on a specific line
+- Use pullRequestDiff repeatedly until nextOffset is null so every diff chunk is inspected
 - To suggest a code fix in an inline comment, use GitHub suggestion syntax:
   \`\`\`suggestion
   corrected code here
@@ -48,9 +44,9 @@ Based on the user's request, decide what to do. Your capabilities include:
 - Answer questions about the codebase structure, dependencies, or implementation details
 - Use bash commands like find, grep, cat to explore
 
-## Making Changes
-- When asked to fix issues (formatting, lint errors, simple bugs), edit files directly using writeFile
-- After making changes, verify they work by running relevant commands
+## Validating Fixes
+- Temporary local edits are allowed when they help verify a suggested fix
+- Do not commit or push; report the proposed fix and validation result in your reply
 
 ## Replying
 - Use the reply tool to post your response to the pull request
@@ -60,7 +56,7 @@ Based on the user's request, decide what to do. Your capabilities include:
 - End every reply with a line break, a horizontal rule, then: *Powered by [OpenReview](https://github.com/vercel-labs/openreview)*
 
 ## Getting Started
-- Start by running \`gh pr diff {{PR_NUMBER}}\` to see what changed in this PR`;
+- Start by calling pullRequestDiff to see what changed in this PR`;
 
 const createModel = () => async () => {
   "use step";
@@ -90,13 +86,26 @@ const getReasoningEffort = () => {
   return env.AI_REASONING_EFFORT;
 };
 
-export const createAgent = (
-  sandboxId: string,
-  threadId: string,
-  prNumber: number,
-  repoFullName: string,
-  skills: SkillMetadata[]
-) => {
+interface CreateAgentOptions {
+  baseRevision: string;
+  prNumber: number;
+  prRevision: string;
+  repoFullName: string;
+  sandboxId: string;
+  skills: SkillMetadata[];
+  threadId: string;
+}
+
+export const createAgent = (options: CreateAgentOptions) => {
+  const {
+    baseRevision,
+    prNumber,
+    prRevision,
+    repoFullName,
+    sandboxId,
+    skills,
+    threadId,
+  } = options;
   const skillsPrompt = buildSkillsPrompt(skills);
   const system = [
     instructions
@@ -119,6 +128,11 @@ export const createAgent = (
     tools: {
       bash: createBashTool(sandboxId),
       loadSkill: createLoadSkillTool(skills),
+      pullRequestDiff: createPullRequestDiffTool(
+        repoFullName,
+        baseRevision,
+        prRevision
+      ),
       readFile: createReadFileTool(sandboxId),
       reply: createReplyTool(threadId),
       writeFile: createWriteFileTool(sandboxId),

@@ -29,11 +29,23 @@ const collectMessages = async (
 };
 
 interface ThreadState {
-  baseBranch: string;
-  prBranch: string;
   prNumber: number;
   repoFullName: string;
 }
+
+const getPullRequestRevisions = async (
+  repoFullName: string,
+  prNumber: number
+): Promise<{ baseRevision: string; prRevision: string }> => {
+  const octokit = await getInstallationOctokit();
+  const [owner, repo] = repoFullName.split("/");
+  const { data } = await octokit.rest.pulls.get({
+    owner,
+    pull_number: prNumber,
+    repo,
+  });
+  return { baseRevision: data.base.sha, prRevision: data.head.sha };
+};
 
 const state = env.REDIS_URL
   ? createRedisState({ url: env.REDIS_URL })
@@ -50,27 +62,17 @@ const handleMention = async (thread: Thread, message: Message) => {
   const repoFullName = raw.repository.full_name;
   const { prNumber } = raw;
 
-  const octokit = await getInstallationOctokit();
-  const [owner, repo] = repoFullName.split("/");
-
-  const { data: pr } = await octokit.rest.pulls.get({
-    owner,
-    pull_number: prNumber,
-    repo,
-  });
+  const revisions = await getPullRequestRevisions(repoFullName, prNumber);
 
   await thread.setState({
-    baseBranch: pr.base.ref,
-    prBranch: pr.head.ref,
     prNumber,
     repoFullName,
   } satisfies ThreadState);
 
   await start(botWorkflow, [
     {
-      baseBranch: pr.base.ref,
+      ...revisions,
       messages,
-      prBranch: pr.head.ref,
       prNumber,
       repoFullName,
       threadId: thread.id,
@@ -132,10 +134,15 @@ const initBot = async (): Promise<Chat> => {
     }
 
     const messages = await collectMessages(event.thread);
+    const revisions = await getPullRequestRevisions(
+      threadState.repoFullName,
+      threadState.prNumber
+    );
 
     await start(botWorkflow, [
       {
         ...threadState,
+        ...revisions,
         messages,
         threadId: event.thread.id,
       } satisfies WorkflowParams,

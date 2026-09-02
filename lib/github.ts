@@ -36,6 +36,34 @@ export const getInstallationOctokit = (): Promise<Octokit> => {
   return githubApp.getInstallationOctokit(env.GITHUB_APP_INSTALLATION_ID);
 };
 
+const parseRepositoryName = (
+  repoFullName: string
+): { owner: string; repo: string } => {
+  const [owner, repo, extra] = repoFullName.split("/");
+  if (!owner || !repo || extra) {
+    throw new Error(`Invalid GitHub repository name: ${repoFullName}`);
+  }
+  return { owner, repo };
+};
+
+export const downloadRepositoryArchive = async (
+  repoFullName: string,
+  revision: string
+): Promise<Buffer> => {
+  const { owner, repo } = parseRepositoryName(repoFullName);
+  const octokit = await getInstallationOctokit();
+  const { data } = await octokit.rest.repos.downloadTarballArchive({
+    owner,
+    ref: revision,
+    repo,
+  });
+
+  if (!(data instanceof ArrayBuffer)) {
+    throw new TypeError("GitHub returned an invalid repository archive");
+  }
+  return Buffer.from(data);
+};
+
 export const getAppInfo = async (): Promise<{
   botUserId: number;
   slug: string;

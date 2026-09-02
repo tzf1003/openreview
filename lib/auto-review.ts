@@ -20,13 +20,9 @@ const pullRequestWebhookSchema = z.object({
   action: z.string(),
   installation: z.object({ id: z.number().int().positive() }),
   pull_request: z.object({
-    base: z.object({ ref: z.string().min(1) }),
+    base: z.object({ sha: z.string().min(1) }),
     draft: z.boolean().nullable(),
-    head: z.object({
-      ref: z.string().min(1),
-      repo: z.object({ full_name: z.string().min(3) }),
-      sha: z.string().min(1),
-    }),
+    head: z.object({ sha: z.string().min(1) }),
     number: z.number().int().positive(),
   }),
   repository: z.object({ full_name: z.string().min(3) }),
@@ -77,24 +73,20 @@ const startAutomaticReview = async (
   });
 
   await thread.setState({
-    baseBranch: pullRequest.base.ref,
-    prBranch: pullRequest.head.ref,
     prNumber: pullRequest.number,
     repoFullName,
   });
   await thread.subscribe();
   await start(botWorkflow, [
     {
-      allowPushChanges: false,
-      baseBranch: pullRequest.base.ref,
+      baseRevision: pullRequest.base.sha,
       installProjectDependencies: false,
       messages: [
         { content: createReviewPrompt(pullRequest.head.sha), role: "user" },
       ],
-      prBranch: pullRequest.head.ref,
       prNumber: pullRequest.number,
+      prRevision: pullRequest.head.sha,
       repoFullName,
-      sourceRepoFullName: pullRequest.head.repo.full_name,
       threadId,
     } satisfies WorkflowParams,
   ]);

@@ -10,10 +10,10 @@ An open-source, self-hosted AI code review bot. Deploy to Vercel, connect a GitH
 
 - **Automatic reviews** — Reviews PRs when they are opened, reopened, marked ready, or updated
 - **On-demand follow-ups** — Mention `@openreview` in any PR comment for additional instructions. Powered by [Chat SDK](https://chat-sdk.dev)
-- **Sandboxed execution** — Runs in an isolated [Vercel Sandbox](https://vercel.com/docs/sandbox) with full repo access, including the ability to run linters, formatters, and tests
-- **Inline suggestions** — Posts line-level comments with GitHub suggestion blocks for one-click fixes
-- **Code changes** — Can directly fix formatting, lint errors, and simple bugs, then commit and push to your PR branch
-- **Reactions** — React with 👍 or ❤️ to approve suggestions, or 👎 or 😕 to skip
+- **Sandboxed execution** — Runs in an isolated [Vercel Sandbox](https://vercel.com/docs/sandbox) with a credential-free checkout for linters, formatters, and tests
+- **Actionable suggestions** — Posts concise findings and suggested fixes on the pull request
+- **Read-only analysis** — Reviews source code without granting the model a GitHub credential
+- **Reactions** — React with 👍 or ❤️ to request another pass, or 👎 or 😕 to skip
 - **Durable workflows** — Built on [Vercel Workflow](https://vercel.com/docs/workflow) for reliable, resumable execution
 - **Extensible skills** — Ships with built-in review [skills](https://skills.sh) and supports custom skills via `.agents/skills/`
 - **Powered by Claude** — Uses Claude Sonnet 4.6 via the [AI SDK](https://sdk.vercel.ai) for high-quality code analysis
@@ -34,23 +34,17 @@ sequenceDiagram
     GH->>WH: Webhook event
     WH->>WF: Start workflow
 
-    WF->>GH: Check push access
     WF->>SB: Create sandbox
-    SB->>SB: Clone repo on PR branch
+    WF->>SB: Load exact PR source snapshot
     SB->>SB: Install dependencies
-    SB->>SB: Configure git
 
     WF->>AI: Run agent with PR context
     AI->>SB: Read files, run linters, explore code
     SB-->>AI: Command output
-    AI->>GH: Post inline comments & suggestions
+    AI->>WF: Submit review result
+    WF->>GH: Post review comment
     AI-->>WF: Agent complete
 
-    WF->>SB: Check for uncommitted changes
-    alt Changes made
-        WF->>SB: Commit & push to PR branch
-        SB->>GH: Push changes
-    end
     WF->>SB: Stop sandbox
 
     U->>GH: React 👍 or ❤️ on suggestion
@@ -59,11 +53,10 @@ sequenceDiagram
 ```
 
 1. Open, reopen, mark ready, or update a pull request
-2. OpenReview spins up a sandboxed environment and clones the repo on the PR branch
+2. OpenReview loads the exact PR source revision into a credential-free sandbox
 3. A Claude-powered agent reviews the diff, explores the codebase, and runs project tooling
-4. The agent posts its findings as PR comments with inline suggestions
-5. If changes are made (formatting fixes, lint fixes, etc.), they're committed and pushed to the branch
-6. The sandbox is cleaned up
+4. The workflow posts the agent's findings as a PR comment
+5. The sandbox is cleaned up
 
 ## Setup
 
@@ -79,7 +72,7 @@ Create a new [GitHub App](https://github.com/settings/apps/new) with the followi
 
 **Repository permissions**:
 
-- Contents: Read & write
+- Contents: Read-only
 - Issues: Read & write
 - Pull requests: Read & write
 - Metadata: Read-only
@@ -117,11 +110,11 @@ Install the GitHub App on the repositories you want OpenReview to monitor. Ready
 
 ```
 @openreview check for security vulnerabilities
-@openreview run the linter and fix any issues
+@openreview run the linter and report any issues
 @openreview explain how the authentication flow works
 ```
 
-**Reactions**: React with 👍 or ❤️ on an OpenReview comment to approve and apply its suggestions. React with 👎 or 😕 to skip.
+**Reactions**: React with 👍 or ❤️ on an OpenReview comment to request another pass. React with 👎 or 😕 to skip.
 
 ## Skills
 

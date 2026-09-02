@@ -55,25 +55,6 @@ export const installDependencies = async (
   }
 
   try {
-    // Install GitHub CLI
-    const ghInstall = await sandbox.runCommand("bash", [
-      "-c",
-      "command -v gh >/dev/null 2>&1 || (" +
-        "curl -sLO https://github.com/cli/cli/releases/download/v2.62.0/gh_2.62.0_linux_amd64.tar.gz &&" +
-        " tar xzf gh_2.62.0_linux_amd64.tar.gz &&" +
-        " mkdir -p ~/.local/bin &&" +
-        " cp -f gh_2.62.0_linux_amd64/bin/gh ~/.local/bin/ &&" +
-        " rm -rf gh_2.62.0_linux_amd64*)",
-    ]);
-
-    if (ghInstall.exitCode !== 0) {
-      const stderr = await ghInstall.stderr();
-      const stdout = await ghInstall.stdout();
-      throw new Error(
-        `Failed to install GitHub CLI (exit ${ghInstall.exitCode}): ${stderr || stdout}`
-      );
-    }
-
     if (options.installProjectDependencies === false) {
       return;
     }

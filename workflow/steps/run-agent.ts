@@ -14,6 +14,16 @@ export interface AgentResult {
   success: boolean;
 }
 
+interface RunAgentOptions {
+  baseRevision: string;
+  messages: ThreadMessage[];
+  prNumber: number;
+  prRevision: string;
+  repoFullName: string;
+  sandboxId: string;
+  threadId: string;
+}
+
 const REVIEW_FOOTER =
   "\n\n---\n*Powered by [OpenReview](https://github.com/vercel-labs/openreview)*";
 const REVIEW_CONCLUSION_TOKEN_BUDGET = 150_000;
@@ -52,24 +62,32 @@ const publishFinalResponse = async (
 };
 
 export const runAgent = async (
-  sandboxId: string,
-  threadMessages: ThreadMessage[],
-  threadId: string,
-  prNumber: number,
-  repoFullName: string
+  options: RunAgentOptions
 ): Promise<AgentResult> => {
+  const {
+    baseRevision,
+    messages: threadMessages,
+    prNumber,
+    prRevision,
+    repoFullName,
+    sandboxId,
+    threadId,
+  } = options;
+
   try {
     await startTyping(threadId, "Reviewing...");
 
     const skills = await discoverSkills([".agents/skills"]);
 
-    const agent = createAgent(
-      sandboxId,
-      threadId,
+    const agent = createAgent({
+      baseRevision,
       prNumber,
+      prRevision,
       repoFullName,
-      skills
-    );
+      sandboxId,
+      skills,
+      threadId,
+    });
 
     const result = await agent.stream({
       maxSteps: 20,
@@ -91,7 +109,10 @@ export const runAgent = async (
           return {
             ...msg,
             content: msg.content.map((part) => {
-              if (part.type !== "tool-result") {
+              if (
+                part.type !== "tool-result" ||
+                part.toolName === "pullRequestDiff"
+              ) {
                 return part;
               }
 
