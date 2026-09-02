@@ -5,6 +5,7 @@ import { createAgent } from "@/lib/agent";
 import { parseError } from "@/lib/error";
 import type { ThreadMessage } from "@/workflow";
 
+import { addPRComment } from "./add-pr-comment";
 import { discoverSkills } from "./discover-skills";
 import { startTyping } from "./start-typing";
 
@@ -12,6 +13,27 @@ export interface AgentResult {
   errorMessage?: string;
   success: boolean;
 }
+
+const REVIEW_FOOTER =
+  "\n\n---\n*Powered by [OpenReview](https://github.com/vercel-labs/openreview)*";
+
+const publishFinalResponse = async (
+  threadId: string,
+  steps: { text: string; toolCalls: { toolName: string }[] }[]
+): Promise<void> => {
+  if (
+    steps.some((step) =>
+      step.toolCalls.some(({ toolName }) => toolName === "reply")
+    )
+  ) {
+    return;
+  }
+
+  const text = steps.findLast((step) => step.text.trim())?.text.trim();
+  const body =
+    text || "Review completed. No actionable findings were reported.";
+  await addPRComment(threadId, `${body}${REVIEW_FOOTER}`);
+};
 
 export const runAgent = async (
   sandboxId: string,
@@ -33,7 +55,7 @@ export const runAgent = async (
       skills
     );
 
-    await agent.stream({
+    const result = await agent.stream({
       maxSteps: 20,
       messages: threadMessages.map((msg) => ({
         content: msg.content,
@@ -90,6 +112,8 @@ export const runAgent = async (
       ],
       writable: getWritable<UIMessageChunk>(),
     });
+
+    await publishFinalResponse(threadId, result.steps);
 
     return { success: true };
   } catch (error) {
