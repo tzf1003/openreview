@@ -6,6 +6,9 @@ import { z } from "zod";
 import { getBot } from "@/lib/bot";
 import { env } from "@/lib/env";
 import { getGitHubApp } from "@/lib/github";
+import { getPullRequestRevision } from "@/lib/review/pull-request";
+import { claimReviewRun } from "@/lib/review/state";
+import { startReviewStatus, supersedeReviewStatus } from "@/lib/review/status";
 import { botWorkflow } from "@/workflow";
 import type { WorkflowParams } from "@/workflow";
 
@@ -42,14 +45,13 @@ const shouldReview = (payload: PullRequestWebhook): boolean =>
   AUTO_REVIEW_ACTIONS.has(payload.action) && !payload.pull_request.draft;
 
 const createReviewPrompt = (headSha: string): string =>
-  `Review the pull request at commit ${headSha}. Inspect the complete diff and ` +
-  "report actionable correctness, security, reliability, and maintainability " +
-  "issues. Do not modify files, commit, or push. Post a concise review; if " +
-  "there are no actionable findings, state that clearly.";
+  `请审计提交 ${headSha} 对应的拉取请求。完整读取 diff 后，报告可操作的` +
+  "正确性、安全性、可靠性和可维护性问题。不得修改文件、提交或推送。";
 
 const startAutomaticReview = async (
-  payload: PullRequestWebhook
-): Promise<void> => {
+  payload: PullRequestWebhook,
+  deliveryId: string
+): Promise<boolean> => {
   const bot = await getBot();
   await bot.initialize();
 
@@ -57,6 +59,13 @@ const startAutomaticReview = async (
   const { full_name: repoFullName } = payload.repository;
   const [owner, repo] = repoFullName.split("/");
   const { pull_request: pullRequest } = payload;
+  const revisions = await getPullRequestRevision(
+    repoFullName,
+    pullRequest.number
+  );
+  if (revisions.prRevision !== pullRequest.head.sha) {
+    return false;
+  }
   const threadId = adapter.encodeThreadId({
     owner,
     prNumber: pullRequest.number,
@@ -65,6 +74,17 @@ const startAutomaticReview = async (
   if (!adapter.channelIdFromThreadId) {
     throw new Error("GitHub adapter cannot derive a channel ID");
   }
+  const claim = await claimReviewRun({
+    deliveryId,
+    headSha: revisions.prRevision,
+    prNumber: pullRequest.number,
+    repoFullName,
+    threadId,
+  });
+  if (!claim) {
+    return false;
+  }
+  const { run } = claim;
   const thread = new ThreadImpl({
     adapter,
     channelId: adapter.channelIdFromThreadId(threadId),
@@ -77,19 +97,25 @@ const startAutomaticReview = async (
     repoFullName,
   });
   await thread.subscribe();
+  if (claim.replacedRun && claim.replacedRun.headSha !== run.headSha) {
+    await supersedeReviewStatus(claim.replacedRun, run.headSha);
+  }
+  const reviewRun = await startReviewStatus(run);
   await start(botWorkflow, [
     {
-      baseRevision: pullRequest.base.sha,
+      baseRevision: revisions.baseRevision,
       installProjectDependencies: false,
       messages: [
-        { content: createReviewPrompt(pullRequest.head.sha), role: "user" },
+        { content: createReviewPrompt(revisions.prRevision), role: "user" },
       ],
       prNumber: pullRequest.number,
-      prRevision: pullRequest.head.sha,
+      prRevision: revisions.prRevision,
       repoFullName,
+      reviewRun,
       threadId,
     } satisfies WorkflowParams,
   ]);
+  return true;
 };
 
 const isExpectedInstallation = (payload: PullRequestWebhook): boolean =>
@@ -100,6 +126,7 @@ export const handlePullRequestWebhook = async (
 ): Promise<Response> => {
   const body = await request.text();
   const signature = request.headers.get("x-hub-signature-256");
+  const deliveryId = request.headers.get("x-github-delivery");
 
   if (!signature || !(await getGitHubApp().webhooks.verify(body, signature))) {
     return new Response("Invalid signature", { status: 401 });
@@ -109,6 +136,9 @@ export const handlePullRequestWebhook = async (
   if (!payload) {
     return new Response("Invalid pull request payload", { status: 400 });
   }
+  if (!deliveryId) {
+    return new Response("Missing GitHub delivery ID", { status: 400 });
+  }
   if (!isExpectedInstallation(payload)) {
     return new Response("Unexpected installation", { status: 403 });
   }
@@ -116,6 +146,8 @@ export const handlePullRequestWebhook = async (
     return new Response("ignored", { status: 200 });
   }
 
-  await startAutomaticReview(payload);
-  return new Response("accepted", { status: 202 });
+  const accepted = await startAutomaticReview(payload, deliveryId);
+  return new Response(accepted ? "accepted" : "ignored", {
+    status: accepted ? 202 : 200,
+  });
 };

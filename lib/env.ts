@@ -13,6 +13,7 @@ export const env = createEnv({
     GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
     GITHUB_APP_WEBHOOK_SECRET: z.string().min(1).optional(),
     REDIS_URL: z.string().url().optional(),
+    REVIEW_LOCALE: z.literal("zh-CN").default("zh-CN"),
   },
   skipValidation: Boolean(process.env.SKIP_ENV_VALIDATION),
 });
