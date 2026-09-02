@@ -62,7 +62,9 @@ Based on the user's request, decide what to do. Your capabilities include:
 ## Getting Started
 - Start by running \`gh pr diff {{PR_NUMBER}}\` to see what changed in this PR`;
 
-const createModel = async () => {
+const createModel = () => async () => {
+  "use step";
+
   const { AI_API_BASE_URL: baseURL, AI_API_KEY: apiKey, AI_MODEL: model } = env;
 
   if (!baseURL || !apiKey || !model) {
@@ -107,7 +109,7 @@ export const createAgent = (
 
   return new DurableAgent({
     maxRetries: 0,
-    model: createModel,
+    model: createModel(),
     providerOptions: {
       openreview: {
         reasoningEffort: getReasoningEffort(),
