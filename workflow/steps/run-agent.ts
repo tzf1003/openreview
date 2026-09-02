@@ -16,23 +16,39 @@ export interface AgentResult {
 
 const REVIEW_FOOTER =
   "\n\n---\n*Powered by [OpenReview](https://github.com/vercel-labs/openreview)*";
+const REVIEW_CONCLUSION_TOKEN_BUDGET = 150_000;
+const REVIEW_TOTAL_TOKEN_BUDGET = 200_000;
+
+interface ReviewStep {
+  text: string;
+  toolCalls: { toolName: string }[];
+  usage: { inputTokens?: number; outputTokens?: number };
+}
+
+const hasPublishedReview = (steps: Pick<ReviewStep, "toolCalls">[]): boolean =>
+  steps.some((step) =>
+    step.toolCalls.some(({ toolName }) => toolName === "reply")
+  );
+
+const getTotalTokens = (steps: Pick<ReviewStep, "usage">[]): number =>
+  steps.reduce(
+    (total, step) =>
+      total + (step.usage.inputTokens ?? 0) + (step.usage.outputTokens ?? 0),
+    0
+  );
 
 const publishFinalResponse = async (
   threadId: string,
-  steps: { text: string; toolCalls: { toolName: string }[] }[]
+  steps: ReviewStep[]
 ): Promise<void> => {
-  if (
-    steps.some((step) =>
-      step.toolCalls.some(({ toolName }) => toolName === "reply")
-    )
-  ) {
+  if (hasPublishedReview(steps)) {
     return;
   }
 
-  const text = steps.findLast((step) => step.text.trim())?.text.trim();
-  const body =
-    text || "Review completed. No actionable findings were reported.";
-  await addPRComment(threadId, `${body}${REVIEW_FOOTER}`);
+  await addPRComment(
+    threadId,
+    `Review completed. No actionable findings were reported.${REVIEW_FOOTER}`
+  );
 };
 
 export const runAgent = async (
@@ -66,7 +82,7 @@ export const runAgent = async (
           `[agent] step: ${step.usage.inputTokens ?? 0} in / ${step.usage.outputTokens ?? 0} out`
         );
       },
-      prepareStep: ({ messages }) => {
+      prepareStep: ({ messages, steps }) => {
         const trimmed = messages.map((msg) => {
           if (msg.role !== "tool" || !Array.isArray(msg.content)) {
             return msg;
@@ -96,19 +112,19 @@ export const runAgent = async (
           };
         });
 
+        if (getTotalTokens(steps) >= REVIEW_CONCLUSION_TOKEN_BUDGET) {
+          return {
+            activeTools: ["reply"],
+            messages: trimmed,
+            toolChoice: { toolName: "reply", type: "tool" },
+          };
+        }
+
         return { messages: trimmed };
       },
       stopWhen: [
-        ({ steps }) => {
-          let totalTokens = 0;
-
-          for (const step of steps) {
-            totalTokens +=
-              (step.usage.inputTokens ?? 0) + (step.usage.outputTokens ?? 0);
-          }
-
-          return totalTokens > 200_000;
-        },
+        ({ steps }) => hasPublishedReview(steps),
+        ({ steps }) => getTotalTokens(steps) > REVIEW_TOTAL_TOKEN_BUDGET,
       ],
       writable: getWritable<UIMessageChunk>(),
     });
