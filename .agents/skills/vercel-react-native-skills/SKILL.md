@@ -1,15 +1,16 @@
 ---
 name: vercel-react-native-skills
-description:
-  React Native and Expo best practices for building performant mobile apps. Use
-  when building React Native components, optimizing list performance,
-  implementing animations, or working with native modules. Triggers on tasks
-  involving React Native, Expo, mobile performance, or native platform APIs.
+description: "Review React Native or Expo code when the task explicitly introduces or changes a native mobile target."
 license: MIT
 metadata:
   author: vercel
   version: '1.0.0'
 ---
+
+OpenReview is a Next.js Web application. Apply this skill only to an explicitly
+requested React Native/Expo target; ordinary Web implementation uses the project's
+Next.js and React Web guidance. Installing a mobile stack requires task scope.
+
 
 # React Native Skills
 
