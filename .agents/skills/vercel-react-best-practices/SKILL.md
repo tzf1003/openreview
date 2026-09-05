@@ -1,6 +1,6 @@
 ---
 name: vercel-react-best-practices
-description: Diagnose or review React rendering, data waterfalls and bundle performance when those behaviors are in scope.
+description: "React performance: rendering, waterfalls, bundles."
 license: MIT
 metadata:
   author: vercel
