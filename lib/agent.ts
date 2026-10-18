@@ -72,6 +72,17 @@ const createModel = () => async () => {
     apiKey,
     baseURL,
     name: "openreview",
+    transformRequestBody: (args) => {
+      if (!/^deepseek/i.test(String(args.model ?? ""))) {
+        return args;
+      }
+
+      // DeepSeek 的思考模式拒绝任何显式的 tool_choice（包括 auto），
+      // 删除该字段后交给 API 按默认规则处理。
+      const body = { ...args };
+      delete body.tool_choice;
+      return body;
+    },
   });
   return provider(model);
 };
