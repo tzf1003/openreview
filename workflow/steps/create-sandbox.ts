@@ -45,7 +45,7 @@ const initializeRepository = async (
     "--no-verify",
     "--quiet",
     "-m",
-    "OpenReview source snapshot",
+    "Xsec Review source snapshot",
   ]);
 };
 

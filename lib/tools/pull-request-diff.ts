@@ -1,68 +1,40 @@
 import { tool } from "ai";
 import { z } from "zod";
 
-import { getInstallationOctokit } from "@/lib/github";
+import { getDiffChunk, loadDiffSnapshot } from "@/lib/review/anchors";
+import type { DiffSnapshot } from "@/lib/review/anchors";
 
-const DIFF_CHUNK_CHARACTERS = 8000;
-
-interface DiffChunkOptions {
+interface PullRequestDiffToolOptions {
   baseRevision: string;
-  offset: number;
   prRevision: string;
   repoFullName: string;
 }
 
-const getPullRequestDiffStep = async (
-  options: DiffChunkOptions
-): Promise<{
-  chunk: string;
-  nextOffset: number | null;
-  totalCharacters: number;
-}> => {
-  "use step";
+export const createPullRequestDiffTool = (
+  options: PullRequestDiffToolOptions
+) => {
+  let completed = false;
+  let snapshot: Promise<DiffSnapshot> | null = null;
 
-  const { baseRevision, offset, prRevision, repoFullName } = options;
-  const [owner, repo] = repoFullName.split("/");
-  const octokit = await getInstallationOctokit();
-  const response = (await octokit.request(
-    "GET /repos/{owner}/{repo}/compare/{basehead}",
-    {
-      basehead: `${baseRevision}...${prRevision}`,
-      headers: { accept: "application/vnd.github.v3.diff" },
-      owner,
-      repo,
-    }
-  )) as unknown as { data: unknown };
-  const { data } = response;
+  const getSnapshot = (): Promise<DiffSnapshot> => {
+    snapshot ??= loadDiffSnapshot(options);
+    return snapshot;
+  };
 
-  if (typeof data !== "string") {
-    throw new TypeError("GitHub returned an invalid pull request diff");
-  }
-
-  const nextOffset = offset + DIFF_CHUNK_CHARACTERS;
   return {
-    chunk: data.slice(offset, nextOffset),
-    nextOffset: nextOffset < data.length ? nextOffset : null,
-    totalCharacters: data.length,
+    getSnapshot,
+    hasReadCompleteDiff: () => completed,
+    tool: tool({
+      description:
+        "读取一个按顺序排列的 PR diff 分片及其可信行 Anchor。必须从 offset 0 开始，持续传入 nextOffset，直至其为 null。",
+      execute: async ({ offset }) => {
+        const chunk = getDiffChunk(await getSnapshot(), offset);
+        completed ||= chunk.nextOffset === null;
+        return chunk;
+      },
+      inputSchema: z.object({
+        offset: z.number().int().nonnegative().default(0),
+      }),
+    }),
   };
 };
-
-export const createPullRequestDiffTool = (
-  repoFullName: string,
-  baseRevision: string,
-  prRevision: string
-) =>
-  tool({
-    description:
-      "Read one ordered chunk of the pull request diff. Start at offset 0, then pass each returned nextOffset until it is null.",
-    execute: ({ offset }) =>
-      getPullRequestDiffStep({
-        baseRevision,
-        offset,
-        prRevision,
-        repoFullName,
-      }),
-    inputSchema: z.object({
-      offset: z.number().int().nonnegative().default(0),
-    }),
-  });

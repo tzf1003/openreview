@@ -3,6 +3,7 @@ import { getWritable } from "workflow";
 
 import { createAgent } from "@/lib/agent";
 import { parseError } from "@/lib/error";
+import type { ReviewRun } from "@/lib/review/types";
 import type { ThreadMessage } from "@/workflow";
 
 import { addPRComment } from "./add-pr-comment";
@@ -20,13 +21,14 @@ interface RunAgentOptions {
   prNumber: number;
   prRevision: string;
   repoFullName: string;
+  reviewRun?: ReviewRun;
   sandboxId: string;
   threadId: string;
 }
 
-const REVIEW_FOOTER =
-  "\n\n---\n*Powered by [OpenReview](https://github.com/vercel-labs/openreview)*";
+const REVIEW_FOOTER = "\n\n---\n*由 Xsec Review 提供*";
 const REVIEW_CONCLUSION_TOKEN_BUDGET = 150_000;
+const REVIEW_MAX_STEPS = 80;
 const REVIEW_TOTAL_TOKEN_BUDGET = 200_000;
 
 interface ReviewStep {
@@ -35,9 +37,12 @@ interface ReviewStep {
   usage: { inputTokens?: number; outputTokens?: number };
 }
 
-const hasPublishedReview = (steps: Pick<ReviewStep, "toolCalls">[]): boolean =>
+const hasUsedTool = (
+  steps: Pick<ReviewStep, "toolCalls">[],
+  toolName: string
+): boolean =>
   steps.some((step) =>
-    step.toolCalls.some(({ toolName }) => toolName === "reply")
+    step.toolCalls.some((toolCall) => toolCall.toolName === toolName)
   );
 
 const getTotalTokens = (steps: Pick<ReviewStep, "usage">[]): number =>
@@ -51,13 +56,13 @@ const publishFinalResponse = async (
   threadId: string,
   steps: ReviewStep[]
 ): Promise<void> => {
-  if (hasPublishedReview(steps)) {
+  if (hasUsedTool(steps, "reply")) {
     return;
   }
 
   await addPRComment(
     threadId,
-    `Review completed. No actionable findings were reported.${REVIEW_FOOTER}`
+    `## Xsec Review · 审计完成\n\n✅ **本次变更未发现需要处理的问题。**${REVIEW_FOOTER}`
   );
 };
 
@@ -70,27 +75,33 @@ export const runAgent = async (
     prNumber,
     prRevision,
     repoFullName,
+    reviewRun,
     sandboxId,
     threadId,
   } = options;
+  const automaticReview = Boolean(reviewRun);
+  const outputToolName = automaticReview ? "submitReview" : "reply";
 
   try {
-    await startTyping(threadId, "Reviewing...");
+    if (!automaticReview) {
+      await startTyping(threadId, "正在审计");
+    }
 
     const skills = await discoverSkills([".agents/skills"]);
 
-    const agent = createAgent({
+    const { agent, hasReadCompleteDiff } = createAgent({
       baseRevision,
       prNumber,
       prRevision,
       repoFullName,
+      reviewRun,
       sandboxId,
       skills,
       threadId,
     });
 
     const result = await agent.stream({
-      maxSteps: 20,
+      maxSteps: REVIEW_MAX_STEPS,
       messages: threadMessages.map((msg) => ({
         content: msg.content,
         role: msg.role,
@@ -133,24 +144,37 @@ export const runAgent = async (
           };
         });
 
-        if (getTotalTokens(steps) >= REVIEW_CONCLUSION_TOKEN_BUDGET) {
+        const reachedConclusionBudget =
+          getTotalTokens(steps) >= REVIEW_CONCLUSION_TOKEN_BUDGET;
+        if (
+          reachedConclusionBudget &&
+          (!automaticReview || hasReadCompleteDiff())
+        ) {
           return {
-            activeTools: ["reply"],
+            activeTools: [outputToolName],
             messages: trimmed,
-            toolChoice: { toolName: "reply", type: "tool" },
+            toolChoice: { toolName: outputToolName, type: "tool" },
           };
         }
 
         return { messages: trimmed };
       },
       stopWhen: [
-        ({ steps }) => hasPublishedReview(steps),
+        ({ steps }) => hasUsedTool(steps, outputToolName),
         ({ steps }) => getTotalTokens(steps) > REVIEW_TOTAL_TOKEN_BUDGET,
       ],
       writable: getWritable<UIMessageChunk>(),
     });
 
-    await publishFinalResponse(threadId, result.steps);
+    if (automaticReview && !hasUsedTool(result.steps, outputToolName)) {
+      if (!hasReadCompleteDiff()) {
+        throw new Error("Automatic review did not read the complete diff");
+      }
+      throw new Error("Automatic review finished without submitting a result");
+    }
+    if (!automaticReview) {
+      await publishFinalResponse(threadId, result.steps);
+    }
 
     return { success: true };
   } catch (error) {
